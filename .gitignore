@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+venv/
+.env
+
+# Node
+node_modules/
+dist/
+
+# ChromaDB
+chroma_db/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Knowledge base PDFs (large files)
+knowledge_base/*.pdf
+
+# Temp / staging files
+temp/
+.claude/
+
+# Personal
+linkedin/
