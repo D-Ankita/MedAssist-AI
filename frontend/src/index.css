@@ -93,6 +93,49 @@ body {
   animation: msgAppear 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* Fade in animation */
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.fade-in {
+  animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Staggered children animation */
+@keyframes staggerIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.stagger-in > * {
+  animation: staggerIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.stagger-in > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-in > *:nth-child(2) { animation-delay: 50ms; }
+.stagger-in > *:nth-child(3) { animation-delay: 100ms; }
+.stagger-in > *:nth-child(4) { animation-delay: 150ms; }
+.stagger-in > *:nth-child(5) { animation-delay: 200ms; }
+.stagger-in > *:nth-child(6) { animation-delay: 250ms; }
+
+/* Pulse animation for mic button */
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+.mic-pulse::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.4);
+  animation: pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  z-index: -1;
+}
+
 /* Input bar container */
 .input-bar {
   background: rgba(255, 255, 255, 0.85);
@@ -124,11 +167,17 @@ body {
   background: #f0fdfa;
   box-shadow: 0 4px 12px rgba(20, 184, 166, 0.1);
   color: #1e293b;
+  transform: translateY(-1px);
+}
+
+.suggestion-card:active {
+  transform: scale(0.98);
 }
 
 .suggestion-card:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  transform: none;
 }
 
 /* Header */
