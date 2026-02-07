@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import type { ChatMessage } from '../types/chat';
 import { sendQuery } from '../services/api';
 import { MessageBubble } from './MessageBubble';
+import { VoiceInput } from './VoiceInput';
 
 const SUGGESTIONS = [
   { icon: '🩺', text: 'What are common symptoms of diabetes?' },
@@ -99,6 +100,16 @@ export function ChatWindow() {
       handleSubmit();
     }
   };
+
+  const handleVoiceTranscript = useCallback(
+    (text: string) => {
+      if (text.trim()) {
+        setInput(text);
+        setTimeout(() => handleSubmit(text), 300);
+      }
+    },
+    [handleSubmit]
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', maxWidth: '860px', margin: '0 auto', width: '100%' }}>
@@ -199,6 +210,8 @@ export function ChatWindow() {
       {/* ---- Input bar ---- */}
       <div className="input-bar safe-bottom" style={{ padding: '14px 24px' }}>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: '10px', maxWidth: '860px', margin: '0 auto' }}>
+          <VoiceInput onTranscript={handleVoiceTranscript} />
+
           <div style={{ flex: 1 }}>
             <textarea
               ref={inputRef}

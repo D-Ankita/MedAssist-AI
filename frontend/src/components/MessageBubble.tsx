@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react';
 import type { ChatMessage } from '../types/chat';
+import { useTextToSpeech } from '../hooks/useTextToSpeech';
 
 interface MessageBubbleProps {
   message: ChatMessage;
 }
 
 export function MessageBubble({ message }: MessageBubbleProps) {
+  const { isSpeaking, speak, stop, isSupported } = useTextToSpeech();
   const isUser = message.role === 'user';
 
   /**
@@ -151,7 +153,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         </div>
       )}
 
-      {/* Timestamp */}
+      {/* Timestamp + TTS */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -162,6 +164,37 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         <span style={{ fontSize: '11px' }}>
           {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
+        {!isUser && isSupported && !message.isLoading && (
+          <button
+            onClick={() => (isSpeaking ? stop() : speak(message.content))}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'inherit',
+              padding: '2px',
+              borderRadius: '4px',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+            title={isSpeaking ? 'Stop speaking' : 'Read aloud'}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              {isSpeaking ? (
+                <>
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                  <line x1="23" y1="9" x2="17" y2="15" />
+                  <line x1="17" y1="9" x2="23" y2="15" />
+                </>
+              ) : (
+                <>
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                  <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                </>
+              )}
+            </svg>
+          </button>
+        )}
       </div>
     </div>
   );
