@@ -11,4 +11,5 @@ sentence-transformers==3.3.1
 python-dotenv==1.0.1
 pydantic==2.10.4
 langchain-huggingface==0.1.2
+langgraph==0.2.60
 python-multipart==0.0.20

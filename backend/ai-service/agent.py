@@ -1,21 +1,27 @@
 """
-Agentic Routing Layer for MedAssist AI.
+Agentic Routing Layer for MedAssist AI — powered by LangGraph.
 
-Implements a decision-making agent that routes user queries into one of three paths:
-1. ANSWER - Answer from medical knowledge base (RAG pipeline)
-2. CLARIFY - Ask a clarifying question when the query is ambiguous
-3. ESCALATE - Flag emergency symptoms and direct to emergency services
+Uses a LangGraph StateGraph to route user queries through a stateful workflow:
+1. classify  → Determine intent (ANSWER / CLARIFY / ESCALATE)
+2. escalate  → Return emergency services guidance
+3. clarify   → Ask a follow-up question
+4. answer    → Run RAG pipeline for a grounded response
 """
 
 from __future__ import annotations
 
 import re
-from typing import List, Optional
+from typing import List, Optional, TypedDict
+
+from langgraph.graph import StateGraph, END
 
 from chain import MedAssistChain
 
 
-# Emergency keywords that should trigger immediate escalation
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
 EMERGENCY_KEYWORDS = [
     "chest pain", "heart attack", "can't breathe", "cannot breathe",
     "difficulty breathing", "shortness of breath", "choking",
@@ -26,11 +32,10 @@ EMERGENCY_KEYWORDS = [
     "loss of consciousness", "fainting", "collapsed",
 ]
 
-# Patterns that suggest the query needs clarification
 AMBIGUOUS_PATTERNS = [
-    r"^(what|tell me) about .{3,10}$",  # Very short, vague queries
-    r"^(it|this|that|the thing)\b",      # Pronoun-heavy without context
-    r"\bor\b.*\bor\b",                   # Multiple options suggesting uncertainty
+    r"^(what|tell me) about .{3,10}$",
+    r"^(it|this|that|the thing)\b",
+    r"\bor\b.*\bor\b",
 ]
 
 ESCALATION_RESPONSE = (
@@ -42,70 +47,175 @@ ESCALATION_RESPONSE = (
     "Do not wait — getting professional help quickly is critical."
 )
 
+CLARIFICATIONS = {
+    "diabetes": "Could you clarify — are you asking about Type 1 diabetes, Type 2 diabetes, or gestational diabetes? This will help me find the most relevant information.",
+    "pain": "I'd like to help! Could you describe where you're experiencing pain and how long it's been going on? This will help me find relevant information.",
+    "medication": "Could you specify which medication you're asking about? Or are you looking for general information about a type of medication?",
+    "vaccine": "Are you asking about a specific vaccine (e.g., COVID-19, flu, HPV), or would you like general information about vaccinations?",
+    "cancer": "Cancer is a broad topic. Could you specify which type of cancer you'd like to learn about, or what aspect (symptoms, screening, treatment options)?",
+}
+
+
+# ---------------------------------------------------------------------------
+# LangGraph State
+# ---------------------------------------------------------------------------
+
+class AgentState(TypedDict):
+    query: str
+    chat_history: list
+    intent: str
+    answer: str
+    sources: list
+    chunks_retrieved: int
+    relevance_scores: list
+
+
+# ---------------------------------------------------------------------------
+# Graph Nodes
+# ---------------------------------------------------------------------------
+
+def classify_intent(state: AgentState) -> AgentState:
+    """Classify the user query into ESCALATE / CLARIFY / ANSWER."""
+    query_lower = state["query"].lower().strip()
+
+    for keyword in EMERGENCY_KEYWORDS:
+        if keyword in query_lower:
+            return {**state, "intent": "ESCALATE"}
+
+    if len(query_lower.split()) < 3:
+        return {**state, "intent": "CLARIFY"}
+
+    for pattern in AMBIGUOUS_PATTERNS:
+        if re.search(pattern, query_lower):
+            return {**state, "intent": "CLARIFY"}
+
+    return {**state, "intent": "ANSWER"}
+
+
+def handle_escalation(state: AgentState) -> AgentState:
+    """Return emergency guidance."""
+    return {
+        **state,
+        "answer": ESCALATION_RESPONSE,
+        "sources": [],
+        "chunks_retrieved": 0,
+        "relevance_scores": [],
+    }
+
+
+def handle_clarification(state: AgentState) -> AgentState:
+    """Generate a clarifying follow-up question."""
+    query_lower = state["query"].lower().strip()
+
+    for keyword, clarification in CLARIFICATIONS.items():
+        if keyword in query_lower:
+            return {**state, "answer": clarification, "sources": [], "chunks_retrieved": 0, "relevance_scores": []}
+
+    fallback = (
+        f"I'd like to help with your question about \"{state['query']}\", but I need "
+        f"a bit more detail to find the best information. Could you provide "
+        f"more specifics about what you'd like to know?"
+    )
+    return {**state, "answer": fallback, "sources": [], "chunks_retrieved": 0, "relevance_scores": []}
+
+
+def handle_answer(state: AgentState) -> AgentState:
+    """Run the full RAG pipeline via MedAssistChain."""
+    chain = _get_chain()
+    result = chain.query(state["query"], state["chat_history"] or None)
+    return {
+        **state,
+        "answer": result["answer"],
+        "sources": result["sources"],
+        "chunks_retrieved": result["chunks_retrieved"],
+        "relevance_scores": result["relevance_scores"],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Routing function
+# ---------------------------------------------------------------------------
+
+def route_by_intent(state: AgentState) -> str:
+    """Route to the appropriate handler based on classified intent."""
+    intent = state["intent"]
+    if intent == "ESCALATE":
+        return "escalate"
+    if intent == "CLARIFY" and not state.get("chat_history"):
+        return "clarify"
+    # If CLARIFY but has chat history, fall through to answer
+    return "answer"
+
+
+# ---------------------------------------------------------------------------
+# Build the LangGraph workflow
+# ---------------------------------------------------------------------------
+
+def _build_graph() -> StateGraph:
+    workflow = StateGraph(AgentState)
+
+    workflow.add_node("classify", classify_intent)
+    workflow.add_node("escalate", handle_escalation)
+    workflow.add_node("clarify", handle_clarification)
+    workflow.add_node("answer", handle_answer)
+
+    workflow.set_entry_point("classify")
+    workflow.add_conditional_edges(
+        "classify",
+        route_by_intent,
+        {"escalate": "escalate", "clarify": "clarify", "answer": "answer"},
+    )
+    workflow.add_edge("escalate", END)
+    workflow.add_edge("clarify", END)
+    workflow.add_edge("answer", END)
+
+    return workflow.compile()
+
+
+# Module-level compiled graph (lazy-initialized)
+_graph = None
+_chain_instance = None
+
+
+def _get_chain() -> MedAssistChain:
+    global _chain_instance
+    if _chain_instance is None:
+        _chain_instance = MedAssistChain()
+    return _chain_instance
+
+
+def _get_graph():
+    global _graph
+    if _graph is None:
+        _graph = _build_graph()
+    return _graph
+
+
+# ---------------------------------------------------------------------------
+# Public API  (MedAssistAgent keeps the same interface as before)
+# ---------------------------------------------------------------------------
 
 class MedAssistAgent:
     """
-    Agent that decides how to handle each user query.
+    Agent that processes user queries through a LangGraph workflow.
 
-    Routes to one of three paths:
-    - ANSWER: Use RAG pipeline to answer from medical docs
-    - CLARIFY: Ask the user to provide more details
+    The graph routes queries to one of three paths:
+    - ANSWER:   Use RAG pipeline to answer from medical docs
+    - CLARIFY:  Ask the user to provide more details
     - ESCALATE: Direct to emergency services
     """
 
     def __init__(self):
-        self.chain = MedAssistChain()
+        self.chain = _get_chain()
+        self._graph = _get_graph()
 
     def classify_intent(self, query: str) -> str:
-        """
-        Classify the user's query intent.
-
-        Args:
-            query: The user's message
-
-        Returns:
-            One of: "ESCALATE", "CLARIFY", "ANSWER"
-        """
-        query_lower = query.lower().strip()
-
-        # Check for emergency keywords first (highest priority)
-        for keyword in EMERGENCY_KEYWORDS:
-            if keyword in query_lower:
-                return "ESCALATE"
-
-        # Check for ambiguous queries (only if no chat history context)
-        if len(query_lower.split()) < 3:
-            return "CLARIFY"
-
-        for pattern in AMBIGUOUS_PATTERNS:
-            if re.search(pattern, query_lower):
-                return "CLARIFY"
-
-        # Default: answer from knowledge base
-        return "ANSWER"
-
-    def generate_clarification(self, query: str) -> str:
-        """Generate a clarifying question for ambiguous queries."""
-        query_lower = query.lower().strip()
-
-        # Common ambiguous topics that need specificity
-        clarifications = {
-            "diabetes": "Could you clarify — are you asking about Type 1 diabetes, Type 2 diabetes, or gestational diabetes? This will help me find the most relevant information.",
-            "pain": "I'd like to help! Could you describe where you're experiencing pain and how long it's been going on? This will help me find relevant information.",
-            "medication": "Could you specify which medication you're asking about? Or are you looking for general information about a type of medication?",
-            "vaccine": "Are you asking about a specific vaccine (e.g., COVID-19, flu, HPV), or would you like general information about vaccinations?",
-            "cancer": "Cancer is a broad topic. Could you specify which type of cancer you'd like to learn about, or what aspect (symptoms, screening, treatment options)?",
-        }
-
-        for keyword, clarification in clarifications.items():
-            if keyword in query_lower:
-                return clarification
-
-        return (
-            f"I'd like to help with your question about \"{query}\", but I need "
-            f"a bit more detail to find the best information. Could you provide "
-            f"more specifics about what you'd like to know?"
-        )
+        """Classify intent without running the full graph (useful for testing)."""
+        result = classify_intent({
+            "query": query, "chat_history": [], "intent": "",
+            "answer": "", "sources": [], "chunks_retrieved": 0, "relevance_scores": [],
+        })
+        return result["intent"]
 
     def process_query(
         self,
@@ -113,40 +223,31 @@ class MedAssistAgent:
         chat_history: Optional[List[dict]] = None,
     ) -> dict:
         """
-        Process a user query through the agent pipeline.
+        Process a user query through the LangGraph agent workflow.
 
         Args:
             query: The user's question
             chat_history: Previous conversation messages
 
         Returns:
-            Dict with response data including intent, answer, and sources
+            Dict with intent, answer, sources, chunks_retrieved, relevance_scores
         """
-        # Step 1: Classify intent
-        intent = self.classify_intent(query)
+        initial_state: AgentState = {
+            "query": query,
+            "chat_history": chat_history or [],
+            "intent": "",
+            "answer": "",
+            "sources": [],
+            "chunks_retrieved": 0,
+            "relevance_scores": [],
+        }
 
-        # Step 2: Route based on intent
-        if intent == "ESCALATE":
-            return {
-                "intent": "ESCALATE",
-                "answer": ESCALATION_RESPONSE,
-                "sources": [],
-                "chunks_retrieved": 0,
-                "relevance_scores": [],
-            }
+        result = self._graph.invoke(initial_state)
 
-        if intent == "CLARIFY" and not chat_history:
-            # Only ask for clarification if there's no conversation context
-            return {
-                "intent": "CLARIFY",
-                "answer": self.generate_clarification(query),
-                "sources": [],
-                "chunks_retrieved": 0,
-                "relevance_scores": [],
-            }
-
-        # ANSWER: Run the full RAG pipeline
-        result = self.chain.query(query, chat_history)
-        result["intent"] = "ANSWER"
-
-        return result
+        return {
+            "intent": result["intent"],
+            "answer": result["answer"],
+            "sources": result["sources"],
+            "chunks_retrieved": result["chunks_retrieved"],
+            "relevance_scores": result["relevance_scores"],
+        }
