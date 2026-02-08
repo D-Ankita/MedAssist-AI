@@ -13,3 +13,5 @@ pydantic==2.10.4
 langchain-huggingface==0.1.2
 langgraph==0.2.60
 python-multipart==0.0.20
+pytest==8.3.4
+httpx==0.28.1
