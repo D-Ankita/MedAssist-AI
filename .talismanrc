@@ -1,0 +1,14 @@
+fileignoreconfig:
+- filename: backend/ai-service/.env.example
+  checksum: 269c6b15035a2ecff140cf7902ba28e0cce6d840b58e753e1ffd4d8c7ec23421
+- filename: frontend/public/vite.svg
+  checksum: 22166aa3fbc85c82b67058e2d22b18203af7f31176943f9424fb7e1cdb1ffb09
+- filename: backend/ai-service/config.py
+  checksum: 9430e7ab700a7336163cbc937761ccf14517e6e3feb47dfcb0162f1d276e3329
+- filename: backend/ai-service/chain.py
+  checksum: 17e85fc7a0cef80f7bb7c6f71f8bccd65eb6eefaed1b20b92897ffb1dcd74d9c
+- filename: backend/ai-service/agent.py
+  checksum: ca6d2e696a767e838d3595721442d55336320cc16e0cecd529c5855e38380170
+- filename: frontend/src/components/ChatWindow.tsx
+  checksum: 1362f47c1bba565f4f25d11d90a9c9a451af6d3d5ffd9f79fe2b59487a55583d
+version: "1.0"
