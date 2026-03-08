@@ -122,6 +122,4 @@ For the full breakdown, see the [Project Overview](product-documents/00-Project-
 
 React, TypeScript, NestJS, FastAPI, LangChain, ChromaDB, and Sentence-Transformers.
 
----
 
-*Built by Ankita Dodamani*
